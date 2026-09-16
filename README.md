@@ -1,6 +1,6 @@
 ﻿# AlvaChat / Meet50 web app
 
-Marketing site: https://alvachat.com/
+Site: https://dvpwemake.github.io/alvachat/
 
 Meetup product (request → respond → concur → channel) is the Python app in this repo.
 
