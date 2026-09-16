@@ -41,6 +41,47 @@ function persistSession() {
   else localStorage.removeItem("meet50_user");
 }
 
+function mergeUser(base, extra) {
+  const out = { ...(base || {}), ...(extra || {}) };
+  for (const k of ["name", "age", "gender", "homeCity", "job", "bio", "education", "lookingFor", "maritalStatus", "filter", "preferences", "plan", "lastPhoto", "photos"]) {
+    const v = extra && extra[k];
+    const empty = v == null || v === "";
+    if (empty && base && base[k] != null && base[k] !== "") out[k] = base[k];
+  }
+  return out;
+}
+
+function userFromSignup(fd) {
+  const lookingFor = fd.get("lookingFor") || "male";
+  const filter = {
+    lookingFor: fd.get("filterLookingFor") || lookingFor || "any",
+    education: fd.get("filterEducation") || "any",
+    ageMin: Number(fd.get("filterAgeMin") || 18),
+    ageMax: Number(fd.get("filterAgeMax") || 99),
+    distance: Number(fd.get("filterDistance") || 50),
+  };
+  return {
+    id: "local_" + Date.now().toString(16),
+    demo: false,
+    plan: "free",
+    name: String(fd.get("name") || "").trim(),
+    age: Number(fd.get("age")),
+    gender: fd.get("gender") || "man",
+    maritalStatus: fd.get("maritalStatus") || "prefer_not",
+    homeCity: String(fd.get("homeCity") || "").trim(),
+    job: String(fd.get("job") || "").trim(),
+    bio: String(fd.get("bio") || "").trim(),
+    education: fd.get("education") || "bachelor",
+    lookingFor,
+    filter,
+    preferences: { lookingFor },
+    lastPhoto: null,
+    photos: [],
+    lat: null,
+    lon: null,
+  };
+}
+
 state.user = loadPersistedUser();
 
 function route() {
@@ -155,10 +196,15 @@ async function refreshMe() {
     return state.user;
   }
   try {
+    if (String(state.token).startsWith("local_")) {
+      state.user = mergeUser(loadPersistedUser(), state.user);
+      persistSession();
+      return state.user;
+    }
     const data = await api("GET", "/me");
-    state.user = data.user;
+    state.user = mergeUser(loadPersistedUser() || state.user, data.user);
     persistSession();
-    return data.user;
+    return state.user;
   } catch (err) {
     const msg = String(err.message || err);
     if (msg === "auth_required" || msg === "Unauthorized") {
@@ -256,35 +302,36 @@ function signupView() {
   `;
   $("#form").onsubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
     const fd = new FormData(e.target);
-    const body = {
-      name: fd.get("name"),
-      age: Number(fd.get("age")),
-      gender: fd.get("gender"),
-      maritalStatus: fd.get("maritalStatus"),
-      homeCity: fd.get("homeCity"),
-      job: fd.get("job"),
-      bio: fd.get("bio"),
-      education: fd.get("education"),
-      lookingFor: fd.get("lookingFor"),
-      filter: {
-        lookingFor: fd.get("filterLookingFor"),
-        education: fd.get("filterEducation"),
-        ageMin: Number(fd.get("filterAgeMin")),
-        ageMax: Number(fd.get("filterAgeMax")),
-        distance: Number(fd.get("filterDistance")),
-      },
-    };
-    try {
-      const data = await api("POST", "/signup", body);
-      state.token = data.token;
-      state.user = data.user;
-      localStorage.setItem("meet50_token", data.token);
-      persistSession();
-      go("#/home");
-    } catch (err) {
-      $("#err").textContent = err.message;
+    const local = userFromSignup(fd);
+    if (!local.name || !local.age) {
+      $("#err").textContent = "name and age are required";
+      return;
     }
+    state.user = local;
+    state.token = state.token || "local_" + Math.random().toString(36).slice(2, 12);
+    persistSession();
+    try {
+      const data = await api("POST", "/signup", {
+        name: local.name,
+        age: local.age,
+        gender: local.gender,
+        maritalStatus: local.maritalStatus,
+        homeCity: local.homeCity,
+        job: local.job,
+        bio: local.bio,
+        education: local.education,
+        lookingFor: local.lookingFor,
+        filter: local.filter,
+      });
+      state.token = data.token;
+      state.user = mergeUser(local, data.user);
+      persistSession();
+    } catch (_) {
+      persistSession();
+    }
+    go("#/me");
   };
 }
 
@@ -292,8 +339,14 @@ async function ensureLocation() {
   if (!state.user) return;
   if (state.user.lat != null) return;
   const set = async (lat, lon) => {
-    const data = await api("PUT", "/me/location", { lat, lon });
-    state.user = data.user;
+    state.user.lat = lat;
+    state.user.lon = lon;
+    persistSession();
+    try {
+      const data = await api("PUT", "/me/location", { lat, lon });
+      state.user = mergeUser(state.user, data.user);
+      persistSession();
+    } catch (_) {}
   };
   if (!navigator.geolocation) {
     await set(47.6062, -122.3321);
@@ -316,13 +369,21 @@ async function ensureLocation() {
 
 async function loadNearby() {
   await ensureLocation();
-  state.nearby = await api("GET", "/nearby");
+  try {
+    state.nearby = await api("GET", "/nearby");
+  } catch (_) {
+    const me = state.user || {};
+    state.nearby = {
+      me: { ...me, lat: me.lat, lon: me.lon, active: true },
+      people: [],
+      meetups: [],
+      radiusMiles: 50,
+    };
+  }
   if (state.user && state.nearby?.me) {
     const me = state.nearby.me;
-    state.user.lat = me.lat;
-    state.user.lon = me.lon;
-    state.user.active = me.active;
-    state.user.miles = me.miles;
+    if (me.lat != null) state.user.lat = me.lat;
+    if (me.lon != null) state.user.lon = me.lon;
     if (me.lastPhoto) state.user.lastPhoto = me.lastPhoto;
     persistSession();
   }
@@ -971,7 +1032,10 @@ async function render() {
       return;
     }
     if (page === "me") {
+      const cached = loadPersistedUser();
+      if (cached) state.user = mergeUser(cached, state.user);
       await refreshMe();
+      if (!state.user && cached) state.user = cached;
       meView();
       return;
     }
