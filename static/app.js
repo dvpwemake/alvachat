@@ -90,11 +90,17 @@ function route() {
   return { path: "/" + parts.join("/"), parts };
 }
 
+function apiBase() {
+  const fromWindow = typeof window !== "undefined" ? String(window.MEET50_API || "").replace(/\/$/, "") : "";
+  const fromStore = (localStorage.getItem("meet50_api") || "").replace(/\/$/, "");
+  return fromWindow || fromStore || "";
+}
+
 async function api(method, path, body) {
   const headers = { Accept: "application/json" };
   if (state.token) headers.Authorization = "Bearer " + state.token;
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  const res = await fetch("/api" + path, {
+  const res = await fetch(apiBase() + "/api" + path, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,

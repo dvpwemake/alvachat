@@ -1,0 +1,9 @@
+name = "alvachat-api"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# After: npx wrangler kv namespace create MEET50
+# paste the id below, then: npx wrangler deploy
+[[kv_namespaces]]
+binding = "MEET50"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

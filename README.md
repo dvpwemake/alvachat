@@ -1,10 +1,10 @@
 ﻿# AlvaChat / Meet50 web app
 
-Site: https://dvpwemake.github.io/alvachat/
+UI (GitHub Pages, free GitHub domain): https://dvpwemake.github.io/alvachat/
 
-Meetup product (request → respond → concur → channel) is the Python app in this repo.
+API (Cloudflare Worker + KV, free): see `BACKEND.md`. GitHub Pages cannot run a server.
 
-## Run the web app
+## Run locally
 
 ```
 python app.py
