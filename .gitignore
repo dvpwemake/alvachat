@@ -1,0 +1,7 @@
+data/db.json
+data/db.tmp
+data/*.tmp
+data/photos/
+__pycache__/
+*.pyc
+.venv/
