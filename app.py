@@ -326,6 +326,25 @@ def apply_expiry_filters(db: dict) -> None:
             rsp["status"] = "expired"
 
 
+def sync_prefs_from_profile(u: dict) -> None:
+    """Profile looking-for + saved filter drive the feed selectors."""
+    filt = u.get("filter") if isinstance(u.get("filter"), dict) else default_filter()
+    looking = u.get("lookingFor") or filt.get("lookingFor") or "any"
+    if looking in GENDERS:
+        looking = next((k for k, v in LOOKING_TO_GENDER.items() if v == looking), "any")
+    prefs = {"lookingFor": looking}
+    if (u.get("plan") or "free") == "paid":
+        if filt.get("ageMin") is not None:
+            prefs["ageMin"] = filt["ageMin"]
+        if filt.get("ageMax") is not None:
+            prefs["ageMax"] = filt["ageMax"]
+        if filt.get("distance") is not None:
+            prefs["distanceMiles"] = filt["distance"]
+        if filt.get("education"):
+            prefs["education"] = filt["education"]
+    u["preferences"] = prefs
+
+
 def prefs_match(viewer: dict, other: dict) -> bool:
     pref = viewer.get("preferences") or {}
     want = pref.get("lookingFor") or "any"
@@ -645,12 +664,13 @@ class Handler(BaseHTTPRequestHandler):
             "lastPhoto": None,
             "photos": [],
             "livePhotos": {},
-            "preferences": {"lookingFor": saved_filter["lookingFor"]},
+            "preferences": {"lookingFor": looking if looking != "any" else saved_filter["lookingFor"]},
             "lat": None,
             "lon": None,
             "locationUpdatedAt": None,
             "createdAt": t,
         }
+        sync_prefs_from_profile(user)
         self.db["users"].append(user)
         self.db["sessions"][token] = uid
         return 200, {"token": token, "user": self._me(user)}
@@ -689,6 +709,7 @@ class Handler(BaseHTTPRequestHandler):
             u["education"] = education
         if "filter" in body:
             u["filter"] = normalize_filter(body["filter"])
+        sync_prefs_from_profile(u)
         return 200, {"user": self._me(u)}
 
     def _update_prefs(self) -> tuple[int, dict]:
@@ -727,8 +748,10 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("plan_invalid")
         u["plan"] = plan
         if plan == "free":
-            looking = (u.get("preferences") or {}).get("lookingFor") or "any"
+            looking = (u.get("preferences") or {}).get("lookingFor") or u.get("lookingFor") or "any"
             u["preferences"] = {"lookingFor": looking}
+        else:
+            sync_prefs_from_profile(u)
         return 200, {"user": self._me(u)}
 
     def _set_location(self) -> tuple[int, dict]:

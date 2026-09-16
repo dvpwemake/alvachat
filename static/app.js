@@ -25,6 +25,24 @@ const state = {
   poll: null,
 };
 
+function loadPersistedUser() {
+  try {
+    const raw = localStorage.getItem("meet50_user");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistSession() {
+  if (state.token) localStorage.setItem("meet50_token", state.token);
+  else localStorage.removeItem("meet50_token");
+  if (state.user) localStorage.setItem("meet50_user", JSON.stringify(state.user));
+  else localStorage.removeItem("meet50_user");
+}
+
+state.user = loadPersistedUser();
+
 function route() {
   const hash = (location.hash || "#/").replace(/^#/, "") || "/";
   const parts = hash.split("/").filter(Boolean);
@@ -118,9 +136,9 @@ function nav(active) {
       <div class="pill ${paid ? "paid" : ""}">${paid ? "PAID" : "FREE"}</div>
     </header>
     <nav class="nav">
-      <button data-go="#/home" class="${active === "home" ? "on" : ""}">Home<small>map + list</small></button>
-      <button data-go="#/feed" class="${active === "feed" ? "on" : ""}">Feed<small>requests</small></button>
-      <button data-go="#/me" class="${active === "me" ? "on" : ""}">Me<small>profile</small></button>
+      <button type="button" data-go="#/home" class="${active === "home" ? "on" : ""}">Home<small>map + list</small></button>
+      <button type="button" data-go="#/feed" class="${active === "feed" ? "on" : ""}">Feed<small>requests</small></button>
+      <button type="button" data-go="#/me" class="${active === "me" ? "on" : ""}">Me<small>profile</small></button>
     </nav>
   `;
 }
@@ -132,16 +150,34 @@ function bindNav() {
 }
 
 async function refreshMe() {
-  if (!state.token) return null;
+  if (!state.token) {
+    state.user = loadPersistedUser();
+    return state.user;
+  }
   try {
     const data = await api("GET", "/me");
     state.user = data.user;
+    persistSession();
     return data.user;
-  } catch {
-    state.token = "";
-    localStorage.removeItem("meet50_token");
-    state.user = null;
-    return null;
+  } catch (err) {
+    const msg = String(err.message || err);
+    if (msg === "auth_required" || msg === "Unauthorized") {
+      const cached = loadPersistedUser();
+      if (cached) {
+        state.user = cached;
+        return cached;
+      }
+      state.token = "";
+      state.user = null;
+      persistSession();
+      return null;
+    }
+    const cached = loadPersistedUser();
+    if (cached) {
+      state.user = cached;
+      return cached;
+    }
+    return state.user;
   }
 }
 
@@ -244,6 +280,7 @@ function signupView() {
       state.token = data.token;
       state.user = data.user;
       localStorage.setItem("meet50_token", data.token);
+      persistSession();
       go("#/home");
     } catch (err) {
       $("#err").textContent = err.message;
@@ -280,14 +317,14 @@ async function ensureLocation() {
 async function loadNearby() {
   await ensureLocation();
   state.nearby = await api("GET", "/nearby");
-  if (state.user) {
-    state.user = {
-      ...state.user,
-      ...state.nearby.me,
-      preferences: state.user.preferences,
-      filter: state.user.filter,
-      education: state.user.education,
-    };
+  if (state.user && state.nearby?.me) {
+    const me = state.nearby.me;
+    state.user.lat = me.lat;
+    state.user.lon = me.lon;
+    state.user.active = me.active;
+    state.user.miles = me.miles;
+    if (me.lastPhoto) state.user.lastPhoto = me.lastPhoto;
+    persistSession();
   }
 }
 
@@ -839,30 +876,43 @@ function meView() {
     };
   $("#profile").onsubmit = async (e) => {
     e.preventDefault();
+    e.stopPropagation();
     const fd = new FormData(e.target);
+    const errEl = $("#err");
+    const payload = {
+      name: fd.get("name"),
+      age: Number(fd.get("age")),
+      gender: fd.get("gender"),
+      maritalStatus: fd.get("maritalStatus"),
+      homeCity: fd.get("homeCity"),
+      job: fd.get("job"),
+      bio: fd.get("bio"),
+      education: fd.get("education"),
+      lookingFor: fd.get("lookingFor"),
+      filter: {
+        lookingFor: fd.get("filterLookingFor") || fd.get("lookingFor"),
+        education: fd.get("filterEducation"),
+        ageMin: Number(fd.get("filterAgeMin")),
+        ageMax: Number(fd.get("filterAgeMax")),
+        distance: Number(fd.get("filterDistance")),
+      },
+    };
+    if (!payload.name || !payload.age) {
+      if (errEl) errEl.textContent = "name and age are required";
+      return;
+    }
+    state.user = { ...(state.user || {}), ...payload, lookingFor: payload.lookingFor };
+    persistSession();
     try {
-      const data = await api("PUT", "/me", {
-        name: fd.get("name"),
-        age: Number(fd.get("age")),
-        gender: fd.get("gender"),
-        maritalStatus: fd.get("maritalStatus"),
-        homeCity: fd.get("homeCity"),
-        job: fd.get("job"),
-        bio: fd.get("bio"),
-        education: fd.get("education"),
-        lookingFor: fd.get("lookingFor"),
-        filter: {
-          lookingFor: fd.get("filterLookingFor"),
-          education: fd.get("filterEducation"),
-          ageMin: Number(fd.get("filterAgeMin")),
-          ageMax: Number(fd.get("filterAgeMax")),
-          distance: Number(fd.get("filterDistance")),
-        },
-      });
+      const data = await api("PUT", "/me", payload);
       state.user = data.user;
-      $("#err").textContent = "Saved.";
+      persistSession();
+      meView();
+      const done = $("#err");
+      if (done) done.textContent = "Saved.";
     } catch (err) {
-      $("#err").textContent = err.message;
+      persistSession();
+      if (errEl) errEl.textContent = "Saved on this device. Server: " + err.message;
     }
   };
 }
