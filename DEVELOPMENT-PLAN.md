@@ -1,133 +1,173 @@
-# Meet50 — development plan (updated)
+# Meet50 — development plan
 
-Working title: **Meet50**. Public name still an admin pick (`ADMIN-DECISION.md`).
+Working title: **Meet50**. Public name: admin pick (`ADMIN-DECISION.md`).  
+GGH copy: `grokdrive:GrokHub/Meet50/`. Public UI: https://dvpwemake.github.io/alvachat/
 
-**Architecture (locked)**
+**Locked:** one Cloudflare API. Two clients in order.
 
-1. **Now — web MVP for testing:** GitHub Pages (frontend) + Cloudflare Worker + KV (backend/DB).  
-2. **After all nine functions work on the web MVP:** native **iOS** app for the **App Store**, talking to the **same Cloudflare API**. Not CloudKit. Not a second product.
+1. **Phase 1 — web MVP** (GitHub Pages UI + Cloudflare Worker/KV DB) for testing.  
+2. **Phase 2 — native iOS** App Store app on that **same** API. Not CloudKit. Not a website wrap.
 
 ```
-                    ┌─────────────────────────┐
-  Testers / web     │ GitHub Pages (UI)       │  https://dvpwemake.github.io/alvachat/
-                    └───────────┬─────────────┘
-                                │ HTTPS /api
-                    ┌───────────▼─────────────┐
-  One source of     │ Cloudflare Worker       │  workers.dev (free)
-  truth             │ + KV database           │
-                    └───────────┬─────────────┘
-                                │ same /api
-                    ┌───────────▼─────────────┐
-  Later             │ Native iOS (Swift)      │  App Store
-                    └─────────────────────────┘
+Web testers  →  GitHub Pages          github.io/alvachat
+                      │
+                      ▼  /api
+                Cloudflare Worker + KV
+                      ▲
+                      │  same /api
+App Store    →  Native iOS (Phase 2)
 ```
 
-GitHub cannot run a server. Do not wrap CloudKit in the website. Do not build iOS until the web MVP is signed off.
+Do not start Phase 2 until Phase 1 sign-off. Do not add a second database.
 
 ---
 
-## Shared product (both clients)
+## Product (both phases)
 
-Request → respond → initiator concurs → channel. Chat locked until the channel exists. Not swipe cards.
+Request → respond → initiator concurs → channel. Chat locked until the channel exists.
 
-| # | Function | Web MVP | iOS later |
-|---|---------|---------|-----------|
-| 1 | Signup profile (name, age, gender, home city, job, marital, bio, looking for, filter) | In UI | Same API |
-| 2 | Free: looking-for only. Paid: age, distance, education, time | Feed selectors | Same rules |
-| 3 | Live camera to post/respond; becomes last profile photo; no gallery | `getUserMedia` | AVFoundation |
-| 4 | Free / paid | Demo unlock until Stripe | StoreKit → same `plan` on API |
-| 5 | Request → respond → concur → channel; free respond 30 min; paid does not expire | Worker-authoritative | Same |
-| 6 | Text chat only after channel | Poll 2.5s | Same API + APNs |
-| 7 | Own location + active users within 50 miles | Map + list | MapKit + same query |
+| # | Function | Web | iOS |
+|---|---------|-----|-----|
+| 1 | Signup profile | Form → Me | Same API |
+| 2 | Free: looking-for only. Paid: age, distance, education, time | Feed | Same rules |
+| 3 | Live camera post/respond; last profile photo; no gallery | getUserMedia | AVFoundation |
+| 4 | Free / paid | Demo → Stripe | StoreKit → Worker `plan` |
+| 5 | Channel; free respond 30 min; paid no expiry | Worker | Same |
+| 6 | Text chat after channel | Poll | REST + APNs |
+| 7 | Active users within 50 miles | Map + list | MapKit + same query |
 | 8 | Offer or ask drink/meal | On request | Same |
-| 9 | Free offer 30 min (minutes); paid sets expiry | Worker | Same |
-
-One database. iOS does not get a parallel CloudKit schema.
+| 9 | Free offer 30 min; paid sets minutes | Worker | Same |
 
 ---
 
-## Phase 1 — web MVP (testing)
+# Phase 1 — Web app (GitHub UI + Cloudflare DB)
 
-**Frontend:** this repo on GitHub Pages.  
-**Backend:** `worker/` (Cloudflare Worker + KV).  
-**Local:** `python app.py` on http://127.0.0.1:5055 with `MEET50_API` empty.
+**Goal:** all nine functions work on github.io against KV, in two browsers, not only this machine.
 
-### 1A — Host the API (in progress)
+Local twin: `python app.py` at http://127.0.0.1:5055 with `window.MEET50_API = ""`.
 
-1. Cloudflare free account, verify email.  
-2. `npx wrangler login` **or** API token (`Edit Cloudflare Workers`).  
-3. KV namespace `MEET50` — **done** (`843f02191f204817b66e6e03fa278463`).  
-4. `npx wrangler deploy` — **blocked** until Workers email/token is accepted (`error 10034`).  
-5. Paste Worker URL into `static/config.js` as `window.MEET50_API`.  
-6. Push; hard-refresh https://dvpwemake.github.io/alvachat/
+### Step 1.1 — Cloudflare account
+- [x] Free account (`dvp@wemake.cloud`).  
+- [ ] Dashboard shows **no** “verify email” banner (Workers still returns `10034` until this is accepted).  
+- [x] Wrangler OAuth worked once; prefer **API token** (Edit Cloudflare Workers) if OAuth callback fails.
 
-Until step 4–5, github.io uses **localStorage only** (this browser). Local Python still has a real JSON DB.
+### Step 1.2 — Database
+- [x] `npx wrangler kv namespace create MEET50`  
+- [x] id `843f02191f204817b66e6e03fa278463` in `worker/wrangler.toml`
 
-### 1B — Test the nine functions on the live web app
+### Step 1.3 — Deploy API
+- [ ] `$env:CLOUDFLARE_API_TOKEN = "..."` (in your terminal, not chat)  
+- [ ] `cd C:\GrokHub\Projects\alvachat\worker`  
+- [ ] `npx wrangler whoami`  
+- [ ] `npx wrangler deploy`  
+- [ ] Open `https://alvachat-api.<you>.workers.dev/api/health` → `{"ok":true}`
 
-Gate for Phase 2: admin signs off that all nine work against Cloudflare KV, not only localhost.
+### Step 1.4 — Point the GitHub UI at the API
+- [ ] Set `static/config.js`: `window.MEET50_API = "https://alvachat-api.<you>.workers.dev"`  
+- [ ] Commit, `git push origin main`  
+- [ ] `ggh.ps1 commit -Message "wire Worker URL"`  
+- [ ] Hard-refresh https://dvpwemake.github.io/alvachat/
 
-- Signup lands on Me with every field filled.  
-- Profile save survives refresh and another browser.  
-- Home: all active users on map **and** list.  
-- Feed: free vs paid selectors; expiry in **minutes**.  
-- Camera required on post/respond.  
-- Request → demo or second user respond → concur → chat.  
-- 50-mile fence; users outside do not appear.  
-- Paid is still a **demo** toggle — do not ship that to production.
+Until 1.3–1.4, github.io is **localStorage only**. That is not the MVP.
 
-### 1C — Production gaps (web, after test sign-off)
+### Step 1.5 — Function test (two browsers / two devices)
 
-| Item | MVP now | After test |
-|------|---------|------------|
-| Paid | Demo button | Stripe (web) |
-| Chat | Poll | Web Push |
-| Photos | Data URL in KV | R2 if size bites |
-| Auth | Bearer token | Email or Sign in with Apple |
-| KV writes | 1,000/day, 1 write/sec on one key | Split keys or D1 if traffic grows |
+Sign off each row on the **live** site (KV), not only localhost.
 
-Free Cloudflare cap (reset 00:00 UTC): 100k Worker requests/day, 100k KV reads/day, **1,000 KV writes/day**. Writes run out first.
+| Step | Test | Pass? |
+|------|------|-------|
+| 1.5.1 | Signup → lands on **Me** with every field filled | |
+| 1.5.2 | Save profile; refresh; second browser sees the same user | |
+| 1.5.3 | Home: **map + list** of all active users in 50 miles | |
+| 1.5.4 | Feed: free = looking-for only; paid unlocks age/distance/education/time | |
+| 1.5.5 | New request requires **live camera**; no gallery | |
+| 1.5.6 | Offer/ask; free expiry 30 **minutes**; paid sets minutes | |
+| 1.5.7 | Second user (or demo) responds with camera | |
+| 1.5.8 | Initiator **concurs** → channel opens | |
+| 1.5.9 | Chat works only after channel; outsider cannot read | |
+| 1.5.10 | User far outside 50 miles does not appear | |
+
+**Gate:** admin signs 1.5.1–1.5.10. Then Phase 2.
+
+### Step 1.6 — After test (web, not required for iOS start)
+
+| Item | After sign-off |
+|------|----------------|
+| Paid | Replace demo button with Stripe |
+| Chat | Web Push (tabs sleep) |
+| Photos | R2 if KV size hurts |
+| Auth | Email or Sign in with Apple |
+| KV | Split keys or D1 if writes hit 1,000/day |
+
+Free cap (00:00 UTC): 100k Worker req/day, 100k KV reads/day, **1,000 KV writes/day**, 1 write/sec on the same key.
 
 ---
 
-## Phase 2 — native iOS (App Store)
+# Phase 2 — Native iOS (App Store)
 
-Start **only** after Phase 1B is approved.
+**Start only after Phase 1.5 is signed.** Same Worker URL. No CloudKit.
 
-iOS is a **client of the same Worker**. Swift / SwiftUI + UIKit where needed. Camera: AVFoundation (stronger gate than the browser). Map: MapKit. Paid: StoreKit receipt sent to the Worker; Worker sets `plan`. Chat: same REST (then APNs).
+### Step 2.1 — Apple setup
+1. Apple Developer Program ($99/year).  
+2. New Xcode app, iOS 17+, bundle id reserved.  
+3. Capabilities: Camera, Location When In Use, Push, In-App Purchase.  
+4. Config: `MEET50_API` = the Worker URL from 1.3.
 
-### iOS sequence
+### Step 2.2 — Auth and profile
+1. Signup/login → `POST /api/signup`, `GET/PUT /api/me`.  
+2. Sign in with Apple (store-friendly) mapped to the same user record.  
+3. Me screen: same fields as web (looking-for dropdown, filter: education, distance, age).  
+4. Profile fields not gated by paid.
 
-1. Xcode app, Apple Developer Program, point at `MEET50_API`.  
-2. Sign in / signup against `/api/signup` (Sign in with Apple later).  
-3. Profile + filter screens (parity with Me).  
-4. Location heartbeat → `/api/me/location`; map + list from `/api/nearby`.  
-5. Live camera post/respond → `/api/photos/live` + meetups.  
-6. Inbox, concur, channel chat.  
-7. StoreKit → Worker paid flag.  
-8. TestFlight → App Store (camera, location, IAP review notes).
+### Step 2.3 — Map and presence
+1. Core Location heartbeat → `PUT /api/me/location`.  
+2. `GET /api/nearby` → MapKit pins + list under the map.  
+3. 50-mile fence is the Worker’s; do not filter only on device.
 
-Do not implement CloudKit. Do not ship a Capacitor wrap unless admin later asks for a third client.
+### Step 2.4 — Feed and paid
+1. Feed selectors: free looking-for; paid age/distance/education/time.  
+2. StoreKit 2 purchase → send JWS to Worker → Worker sets `plan`.  
+3. Never trust a client-only paid flag.
+
+### Step 2.5 — Camera meetup flow
+1. AVFoundation capture only (no Photos picker) on post and respond.  
+2. `POST /api/photos/live` then `POST /api/meetups` / `.../responds`.  
+3. Capture becomes last profile photo.  
+4. Offer/ask + expiry minutes, same as web.
+
+### Step 2.6 — Concur and chat
+1. Inbox of responds; initiator concurs → `POST .../concur`.  
+2. Chat `GET/POST /api/channels/:id/messages` only if member.  
+3. APNs for inbound respond and new chat while backgrounded.
+
+### Step 2.7 — Ship
+1. Internal TestFlight: two devices, all nine functions against KV.  
+2. Privacy nutrition labels: camera, location, photos, purchases.  
+3. Review notes: why camera is required, why location, IAP.  
+4. App Store submit.  
+5. Do not ship demo paid.
 
 ---
 
 ## What not to do
 
-- Two backends (KV + CloudKit).  
-- iOS work before the web MVP is signed off.  
-- Shipping the demo “Unlock paid” button.  
-- Treating GitHub Pages as a server.
+- iOS before 1.5 sign-off.  
+- CloudKit or a second DB.  
+- Capacitor/WKWebView wrap unless admin asks later.  
+- Treating GitHub Pages as a server.  
+- Shipping the web demo “Unlock paid” button.
 
 ---
 
-## Status snapshot (2026-09-16)
+## Status (2026-09-17)
 
 | Item | State |
 |------|--------|
-| Nine functions on local Python | Built |
-| GitHub Pages UI | Live at `/alvachat/` |
-| Cloudflare KV namespace | Created |
-| Worker deploy | Waiting on verified Workers access + `wrangler deploy` |
-| `config.js` API URL | Empty until deploy URL exists |
-| Public product name | Not chosen |
-| Native iOS | **Not started** (Phase 2) |
+| Nine functions, local Python | Built |
+| GitHub Pages UI | Live |
+| KV namespace | Created |
+| Worker deploy (1.3) | **Blocked** (`10034` / token) |
+| `config.js` Worker URL (1.4) | Empty |
+| Phase 1.5 live tests | Not started |
+| Phase 2 iOS | **Not started** |
+| Public name | Not chosen |
