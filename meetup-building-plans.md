@@ -1,256 +1,190 @@
-# Meetup iOS app — three building plans
+# Meetup app — building plans
 
-**Status:** plans only. No app binary, no server, no IAP, no store ship.  
-**Wait:** stop here for admin decision (which plan, or hybrid).  
-**Prior context (not this deliverable):** `match-pilot/` is a static + Google Form/Sheet pilot. Do not extend or replace it unless admin later chooses that path.
+**Status (locked 2026-09-17):** two phases, one API.
+
+1. **Web MVP (now):** GitHub Pages frontend + Cloudflare Worker + KV database. Test all nine functions here.  
+2. **Native iOS (after MVP works):** App Store client of the **same** Cloudflare API. Not CloudKit. Not a wrap of the website.
+
+**Repos:** `C:\GrokHub\Projects\alvachat` (canonical). Local Python twin: `meetup-web/`.  
+**Working title:** Meet50. Public name: admin pick (`alvachat/ADMIN-DECISION.md`).  
+**Detail plan:** `alvachat/DEVELOPMENT-PLAN.md`.  
+**Do not start iOS until the web MVP is signed off.**
+
+```
+Testers     →  GitHub Pages UI     https://dvpwemake.github.io/alvachat/
+                    │
+                    ▼  HTTPS /api
+               Cloudflare Worker + KV
+                    ▲
+                    │  same /api
+App Store   →  Native iOS (Phase 2)
+```
+
+GitHub cannot run a server. Old Plan 2 (CloudKit, no your server) and Plan 3 (WKWebView wrap) are **not** the path. Plan 1’s *shape* (authoritative API) is kept; the free host is Cloudflare, not a VPS + Postgres.
 
 ---
 
-## Shared product (all plans must ship these)
+## Shared product (web MVP and iOS must ship these)
 
 Tinder-like here means **request → respond → initiator concurs → channel**. Not swipe cards. Chat is locked until the channel exists.
 
 ### 1. Signup profile
-Fields: **name, age, gender, home city, job, marital status, bio, looking for, filter**.  
-`filter` is the user’s saved meetup filter (what they will apply when browsing/posting). Age is numeric (the brief’s “ago” is treated as **age**).
+Fields: **name, age, gender, home city, job, marital status, education, bio, looking for, filter**.  
+`looking for`: dropdown **Male / Female / LGBTQ**.  
+`filter` (saved on profile, same for free and paid): **education, distance, age, looking for**.  
+Age is numeric. Profile fields are **universal** (not gated by paid).
 
 ### 2. Preference selectors (who they want to meet)
-- **Free:** one selector only: **gender**.
-- **Paid:** full selectors: **age, distance, time** (plus gender).
+Live on the **Feed**, not the profile. Used to filter counterparties.  
+- **Free:** **looking for** only.  
+- **Paid:** **age, distance (max 50 miles), education, time** (plus looking for).
 
 ### 3. Real-time camera photo gate
-User **must take a real-time photo from the phone camera** to **post** a meetup request **or respond** to one. That capture becomes the **last profile photo**. Library/gallery picks are rejected for this action.
+User **must take a real-time photo from the camera** to **post** a meetup request **or respond**. That capture becomes the **last profile photo**. Gallery/file picks are rejected.
 
 ### 4. Two user levels: free and paid
-Entitlement gates preference selectors, respond expiry, and offer/ask expiry. Free is the default; paid is StoreKit (or equivalent) unlock.
+Entitlement gates Feed selectors, respond expiry, and offer/ask expiry. Free is default.  
+Web test: demo unlock. Web production: Stripe. iOS: StoreKit → Worker sets `plan`. Server (Worker) is authoritative.
 
 ### 5. Mutual selection / meetup channel
-- Initiator **issues a meetup request** (visible to matching nearby users).
-- Other users **respond**.
-- **Free respond expires in 30 minutes.** **Paid respond does not expire.**
-- Channel **only** after the **initiator concurs** the respond. One-sided respond is not a match.
+- Initiator **issues a meetup request**.  
+- Others **respond**.  
+- **Free respond expires in 30 minutes.** **Paid respond does not expire.**  
+- Channel **only** after the **initiator concurs**. One-sided respond is not a match.
 
 ### 6. Text chat
-Tinder-like **text chat only after** the meetup channel is established. No pre-channel DMs.
+Text chat **only after** the channel exists. No pre-channel DMs.
 
 ### 7. Geofence (50 miles)
-Show the user’s **own location** and **active users within 50 miles** radius. Map/list, live-enough presence.
+Own location + **all active users within 50 miles**. Map on top, list under it. Presence TTL ~30 min.
 
 ### 8. Offer or ask
-Initiator sets **offer** a drink/meal **to** the counterparty, **or ask** a drink/meal **from** them. Attached to the meetup request.
+Initiator sets **offer** or **ask** a **drink** or **meal** on the request.
 
 ### 9. Offer/ask expiry
-- **Free:** offer and ask expire in **30 minutes**.
-- **Paid:** user **sets the expiration time** of their offer and ask.
+- **Free:** 30 minutes (not editable).  
+- **Paid:** user sets expiry in **minutes** (no seconds).
 
 ---
 
-# Plan 1 — Conventional architecture with server side
+# Phase 1 — Web MVP (GitHub frontend + Cloudflare DB)
 
-Native **iOS** client + **your** API + database + object store + push. This is the default production shape if admin wants reliability at 50 miles, expiry that fires when the phone is asleep, and chat that does not depend on iCloud accounts.
+**Purpose:** test the nine functions with real persistence, without an App Store binary.
 
 ## Stack
 | Layer | Choice |
 |--------|--------|
-| Client | Swift / SwiftUI, iOS 17+, Core Location, AVFoundation camera, MapKit, StoreKit 2 |
-| API | HTTPS REST or gRPC (Node, Go, or Python). Auth: Sign in with Apple + session JWT |
-| Data | Postgres (users, prefs, requests, responds, channels, chat, entitlements) |
-| Files | S3-compatible for profile/live photos |
-| Realtime | WebSocket or APNs + polling for chat and inbound responds |
-| Jobs | Worker/cron: expire free responds at 30 minutes; expire free offer/ask at 30 minutes; expire paid offer/ask at user-chosen time |
-| Geo | PostGIS or lat/lon + Haversine / geography index, query `ST_DWithin(..., 50 miles)` |
+| UI | Static SPA in `alvachat/` on **GitHub Pages** (`https://dvpwemake.github.io/alvachat/`) |
+| API | **Cloudflare Worker** (`alvachat/worker/`) — same routes as local `app.py` |
+| DB | **Workers KV** namespace `MEET50` (`id = 843f02191f204817b66e6e03fa278463`) |
+| Local twin | `python app.py` → http://127.0.0.1:5055 (`MEET50_API` empty) |
+| Auth | Bearer token (email / Sign in with Apple later) |
+| Paid (test) | Demo unlock; do not ship |
+| Camera | `getUserMedia`, no gallery |
+| Map | Leaflet + Haversine ≤ 50 miles on the Worker |
 
-No dependency on the user’s iCloud account for matching. Paid flag is **server-authoritative** after StoreKit receipt/JWS verify.
+Until the Worker is deployed, github.io falls back to **this-browser `localStorage`**. That is not the MVP. MVP = Worker URL in `static/config.js`.
 
-## 1. Signup profile
-`POST /me` after Sign in with Apple. Persist **name, age, gender, home city, job, marital status, bio, looking for, filter**. Validate age range, gender enum, city string. Profile photo slot 0..n; last slot reserved for camera-gated live photo (function 3).
+## How each function is built (web)
 
-## 2. Preference selectors
-`GET/PUT /me/preferences`.  
-**Free:** API accepts **gender** only; rejects age/distance/time with 403 `paid_required`.  
-**Paid:** accept **age** (min/max), **distance** (up to 50 miles), **time** (window when they will meet). Server applies these when listing nearby requests.
+| # | Function | Implementation |
+|---|---------|----------------|
+| 1 | Signup profile | `POST /api/signup`; Enter Meet50 opens **Me** with all fields |
+| 2 | Feed selectors | `PUT /api/me/preferences`; free looking-for only |
+| 3 | Camera gate | `POST /api/photos/live`; required on request/respond |
+| 4 | Free / paid | `POST /api/me/plan`; Worker stores `plan` |
+| 5 | Channel | request → respond → `POST .../concur` → channel |
+| 6 | Chat | `GET/POST /api/channels/:id/messages`; poll 2.5s |
+| 7 | 50 miles | `PUT /api/me/location`; `GET /api/nearby`; map + list |
+| 8 | Offer/ask | `intent` + `kind` on `POST /api/meetups` |
+| 9 | Expiry | free 30 min; paid `expireMinutes`; Worker filters on read |
 
-## 3. Camera-gated post / respond
-Client: `AVCaptureSession` still, front or back, **no Photos picker** on Post and Respond buttons. Upload JPEG to `/photos/live` with `capturedAt` and device attestation if later desired. Server stores URL and sets `profile.lastPhotoId`.  
-`POST /meetups` (request) and `POST /meetups/:id/responds` **require** a fresh live photo id (e.g. captured within N seconds). That photo is displayed as the **last profile photo**.
+## Phase 1 build sequence
 
-## 4. Free vs paid
-StoreKit 2 auto-renewing subscription (or one-time). Client sends transaction JWS; server verifies with Apple and writes `users.plan = free | paid`. All preference, expiry, and offer-duration rules read `plan` on the server so the client cannot spoof paid.
+1. Cloudflare free account, verify email, Wrangler login **or** API token.  
+2. KV `MEET50` — **done**.  
+3. `npx wrangler deploy` — **blocked** until Workers accepts the account (error 10034).  
+4. Set `window.MEET50_API` in `static/config.js` to the `*.workers.dev` URL. Push.  
+5. Test all nine functions on github.io (two browsers, not only localStorage).  
+6. Admin sign-off → Phase 2.
 
-## 5. Request → respond → initiator concurs → channel
-Tables: `meetup_requests`, `meetup_responds`, `meetup_channels`.  
-Flow: initiator creates request (with offer/ask, live photo, location). Eligible users (prefs + 50-mile geofence + active) see it. They respond with their live photo.  
-**Free respond `expires_at = now+30m`.** **Paid respond `expires_at = null` (does not expire).**  
-Worker marks expired responds `expired`; initiator cannot concur them.  
-`POST /meetups/:id/concur` (initiator only) creates **channel** and unlocks chat. Until concur, no channel.
+## Free quotas (Cloudflare Workers Free, 00:00 UTC reset)
 
-## 6. Text chat after channel
-`GET/POST /channels/:id/messages`. WebSocket fan-out. Reject messages if no channel or user not a member. Optional APNs for background.
+| | Limit |
+|--|--------|
+| Worker requests | 100,000 / day (1,000 / min) |
+| KV reads | 100,000 / day |
+| KV writes | **1,000 / day** (binding limit for this app) |
+| Same-key writes | 1 / second |
+| KV storage | 1 GB |
 
-## 7. Geofence 50 miles
-Client: `CLLocationManager` when posting/browsing (When In Use). `PUT /me/location`.  
-List: active users and open requests with `distance <= 50 miles`. Map: own pin + others. “Active” = location heartbeat within a TTL (e.g. 15–30 min). Server never returns users outside the radius.
+GitHub Pages: UI only (~100 GB bandwidth / month).
 
-## 8. Offer or ask
-On create request: `intent = offer | ask`, `kind = drink | meal`. Stored on the request; shown to responders. Counterparty sees the offer/ask before responding.
-
-## 9. Offer/ask expiry
-**Free:** `offer_expires_at = now+30m` (not user-editable).  
-**Paid:** client sends `offer_expires_at` of their choice (bounds: e.g. 15m–7d); server stores it.  
-When expired, request leaves the nearby feed; outstanding free responds still follow the 30-minute respond rule independently.
-
-## Build sequence (Plan 1)
-1. Auth + profile CRUD (all signup fields).  
-2. Location heartbeat + 50-mile query.  
-3. Camera live photo upload + last profile photo.  
-4. Meetup request + offer/ask.  
-5. Respond + 30-minute free expiry job; paid no expiry.  
-6. Initiator concur → channel.  
-7. Channel text chat.  
-8. StoreKit paid: unlock age/distance/time prefs + paid offer expiry picker.  
-9. Map UI for own location and active users in radius.
-
-## Cost / ops
-Always-on server, DB, storage, APNs certs, Apple Developer. Highest fidelity for expiry while the app is killed, 50-mile queries, and chat.
-
-## Risks
-Camera anti-spoof is still weak (a second phone pointed at a still). Server can add freshness checks later; not in this plan’s non-goals (no ID vendor).
+## Phase 1 risks
+- Worker not live until email/token deploy succeeds.  
+- Whole DB is one KV key (write cap + 1/sec). Split keys or D1 if testing traffic grows.  
+- Browser camera is weaker than AVFoundation.  
+- Demo paid is not a receipt.
 
 ---
 
-# Plan 2 — No server side (iOS / iCloud, no-cost routing)
+# Phase 2 — Native iOS (App Store)
 
-**No app server you operate.** All data communication through **Apple no-cost options**: **CloudKit** (iCloud), **PushKit/APNs via CloudKit subscriptions**, **StoreKit**, **Core Location**, **AVFoundation**. Not Multipeer Connectivity for the 50-mile geofence (that API is nearby-only and **does not cover 50 miles**).
-
-This is not “no computers”: iCloud is Apple’s. It is “no your backend.” Quota: CloudKit public DB free tier (Apple’s current public-database limits). Existing `match-pilot/` Google Form/Sheet is a different no-server path and is **not** this plan.
+**Start only after Phase 1 sign-off.** Same nine functions, **same Worker**. No CloudKit schema.
 
 ## Stack
 | Layer | Choice |
 |--------|--------|
-| Client | Swift / SwiftUI, same device APIs as Plan 1 |
-| Directory / records | CloudKit **Public** database: profiles, locations, requests, responds, channels, messages |
-| Private | CloudKit **Private**: device keys, draft profile, StoreKit mirror |
-| Files | `CKAsset` for live/profile photos |
-| Paid | StoreKit 2 on-device; write `plan` onto the user’s public `User` record (signed payload stored as Data; other devices treat as hint, client re-checks StoreKit locally) |
-| Realtime | `CKQuerySubscription` + silent push for new responds, concurring, chat |
-| Expiry | **On-device** timers when app is running; **CloudKit record `expiresAt`** so other phones hide expired rows even if the poster is asleep. No server cron: each client filters `expiresAt > now` on fetch. Optionally a local `BGAppRefreshTask` to delete own expired records |
+| Client | Swift / SwiftUI + UIKit where needed, iOS 17+ |
+| API | Same Cloudflare Worker (`MEET50_API`) |
+| Auth | Sign in with Apple → Worker session |
+| Camera | AVFoundation; no Photos picker on post/respond |
+| Map | MapKit; nearby list from `/api/nearby` |
+| Paid | StoreKit 2; JWS to Worker; Worker sets `plan` |
+| Push | APNs for inbound respond and chat |
 
-## 1. Signup profile
-Sign in with Apple **or** iCloud account (CloudKit requires iCloud). Create `User` record: **name, age, gender, home city, job, marital status, bio, looking for, filter**. Photos as `CKAsset` list; last asset is the live camera photo.
+## iOS build sequence
 
-## 2. Preference selectors
-`Preferences` record on the user. UI: **Free → gender only.** **Paid → age, distance, time** (and gender). Enforcement: Swift gates the extra pickers on `plan == paid`. Nearby fetch applies age/distance/time only if paid; free queries ignore those fields.
+1. Xcode app, Apple Developer Program, point at Worker URL.  
+2. Signup/profile against `/api/signup` and `/api/me`.  
+3. Location heartbeat + map/list.  
+4. Live camera post/respond.  
+5. Request / respond / concur / chat.  
+6. StoreKit → Worker paid.  
+7. TestFlight, then App Store (camera, location, IAP review notes).
 
-## 3. Camera-gated post / respond
-Same AVFoundation live capture as Plan 1. Save to `CKAsset`, set `User.lastPhoto`. `MeetupRequest` and `MeetupRespond` records **must** reference a `livePhoto` asset with `capturedAt`. No Photo library picker on those actions. Display last photo on the public profile.
-
-## 4. Free vs paid
-StoreKit 2. Current entitlement on device drives UI. Mirror `plan` to CloudKit so others can see paid vs free expiry rules on that user’s responds/offers. Without a server, a determined user can tamper the mirrored field; the **honest client** still obeys StoreKit. Admin must accept this if choosing Plan 2.
-
-## 5. Request → respond → initiator concurs → channel
-Records: `MeetupRequest`, `MeetupRespond`, `MeetupChannel`.  
-Initiator saves a request (location, offer/ask, live photo). Others query public DB. They save a respond.  
-**Free respond expires in 30 minutes** (`expiresAt = now+30m`). **Paid respond does not expire** (`expiresAt` empty).  
-Clients drop responds where `expiresAt < now`. Initiator **concur** writes `MeetupChannel` with both user refs. No channel record → no chat.
-
-## 6. Text chat after channel
-`ChatMessage` records keyed by `channelId`. Query subscription for the channel. If no `MeetupChannel` for the pair, the composer is disabled. iCloud push delivers new messages when the app is backgrounded (CloudKit subscription), not a chat server.
-
-## 7. Geofence 50 miles
-Core Location publishes `UserLocation` (lat, lon, `updatedAt`). CloudKit does not give a full PostGIS radius join. **Keep the 50-mile requirement:** store coordinates; query a **bounding box** (~50 miles in degrees) then **Haversine-filter to 50 miles** on device. Show own location on MapKit plus filtered active users (`updatedAt` within activity TTL). Multipeer / AirDrop / nearby are **out of scope** for this radius.
-
-## 8. Offer or ask
-On `MeetupRequest`: `intent` offer|ask, `kind` drink|meal. Shown on the request card before respond.
-
-## 9. Offer/ask expiry
-**Free:** offer and ask expire in 30 minutes (`offerExpiresAt = now+30m`, UI locked).  
-**Paid:** date-time picker writes `offerExpiresAt` of their choice.  
-All clients hide requests with `offerExpiresAt < now`. Same pattern as responds: no server worker; record field + client filter (+ optional background refresh to delete own expired rows).
-
-## Build sequence (Plan 2)
-1. CloudKit schema + iCloud sign-in + profile fields.  
-2. Location records + 50-mile box + Haversine filter + map.  
-3. Camera CKAsset + last profile photo.  
-4. Request + offer/ask fields.  
-5. Respond with free 30-minute `expiresAt` vs paid no expiry.  
-6. Concur → `MeetupChannel`.  
-7. Channel-only `ChatMessage`.  
-8. StoreKit paid unlock for age/distance/time and paid offer expiry picker.
-
-## Cost / ops
-Apple Developer Program only (already required for camera/location/IAP). No VPS. Limits: CloudKit quotas, iCloud-required users, weaker paid enforcement, expiry not guaranteed to delete until some client reads the record.
-
-## Risks (do not drop requirements)
-- 50-mile geofence is **client-filtered**, not a server geo index.  
-- 30-minute expiry is **field + filter**, not a job that fires at T+30 if nobody is online (records linger until a fetch).  
-- Live photo anti-spoof is weaker than Plan 1 (no server attestation). Still required.
+Do not implement CloudKit. Do not ship a Capacitor wrap unless admin later asks for a third client.
 
 ---
 
-# Plan 3 — Web app wrapping vs native iOS
+# Deferred (not the path)
 
-This is a **client-packaging** choice. It can sit on Plan 1’s server **or** (poorly) on Plan 2’s CloudKit. Two options:
+Kept so the original three-plan memo is not lost. **Do not build these unless admin reverses the lock.**
 
-**A. Native iOS** — SwiftUI, as in Plans 1–2.  
-**B. Web app wrapping** — product is a responsive web app (PWA) inside **WKWebView** / **Capacitor** / **WKWebView shell**, shipped to the App Store as an iOS binary.
+**Old Plan 1** — own VPS + Postgres + object store + cron. Stronger than KV at scale. Use only if Cloudflare free caps are hit after launch.
 
-Both must still implement the same nine functions. Wrapping does **not** remove the camera gate, 50-mile geofence, expiry rules, or initiator-concur channel.
+**Old Plan 2** — native iOS + CloudKit, no your server. Not spec-complete (paid spoofable, expiry is hide-on-fetch, 50-mile is client-filter, iCloud required). Replaced by Phase 1 Worker + Phase 2 iOS client.
 
-## How each function is built
-
-| Function | Native iOS | Web wrap (WKWebView / Capacitor) |
-|----------|------------|-----------------------------------|
-| **1. Signup profile** (name, age, gender, home city, job, marital status, bio, looking for, filter) | SwiftUI forms, Keychain session | HTML forms; cookies/JWT. Same fields. |
-| **2. Preference selectors** free = **gender** only; paid = **age, distance, time** | Native pickers gated on StoreKit | Web pickers gated on same entitlement API. Extra work to feel native. |
-| **3. Real-time camera photo** as **last profile photo** to post or respond | AVFoundation; reject UIImagePicker gallery for this action | `getUserMedia` **or** Capacitor Camera with `source: Camera`. Must **force camera**, not file input / gallery. WKWebView camera permission + `NSCameraUsageDescription`. Freshness is easier to cheat in a browser. |
-| **4. Free vs paid** | StoreKit 2 | StoreKit **still required** for IAP inside an App Store binary (Apple: digital goods). Web Stripe-only inside a wrapped app is a review risk. Native IAP plugin (Capacitor Purchases) + server verify if Plan 1. |
-| **5. Request → respond → initiator concurs → channel**; free respond **30 minutes**, paid respond **does not expire** | Native lists + server or CloudKit | Same API as Plan 1 (recommended) or JS CloudKit (awkward). Expiry is server jobs (Plan 1) or record filters (Plan 2). UI is cards/lists, not swipe. |
-| **6. Text chat after channel** | Native chat UI + WS/CloudKit | Web chat (WebSocket). WKWebView backgrounding is worse; need APNs via a small native plugin. |
-| **7. Geofence 50 miles**, own location + active users | Core Location + MapKit | Browser Geolocation **or** Capacitor Geolocation; Mapbox/MapKit JS. Background location in a wrap is weaker. Still filter **50 miles**. |
-| **8. Offer or ask** drink/meal | Native enum on request | Same fields in web form on create request. |
-| **9. Offer/ask expiry** free **30 minutes**; paid **sets expiration** | Native DatePicker for paid | `<input type=datetime-local>` for paid; free locked to 30 minutes. |
-
-## Wrapping stack (if admin picks B)
-- **UI:** React or Vue PWA.  
-- **Shell:** Capacitor iOS (camera, geolocation, push, IAP plugins) or a thin WKWebView app.  
-- **Backend:** **Plan 1 server** (strongly preferred). CloudKit from JavaScript is possible (`cloudkit.js`) but a poor fit for a wrapped store app.  
-- **Not sufficient:** a GitHub Pages static site like `match-pilot/` (no live camera gate, no 50-mile presence, no 30-minute expiry, no chat).
-
-## Native vs wrap — decision notes
-| | Native | Web wrap |
-|--|--------|----------|
-| Camera gate | Strongest (AVFoundation, no gallery) | Easy to get wrong (file picker). Doable if camera-only plugin is locked. |
-| 50-mile geofence | Core Location + MapKit | OK in foreground; background/active-users heartbeat is worse. |
-| Chat | Standard | Needs native push plugin or users miss responds. |
-| Paid / IAP | StoreKit straightforward | Must still use IAP in-app; wrap adds a plugin and review surface. |
-| Speed to first UI | Slower | Faster if web talent is the bench. |
-| App Review | Normal | Extra scrutiny if it is “just a website.” Camera, location, IAP must be used in-app. |
-| Plan 2 (no server) | CloudKit native SDK | Wrap + CloudKit is the worst pairing. Do not wrap Plan 2. |
-
-## Recommendation (not a ship)
-- If admin wants **no server**: **Plan 2 + native iOS**, not a wrap.  
-- If admin wants **a real 50-mile product with expiry while the phone is asleep**: **Plan 1 + native iOS**.  
-- Web wrap only if admin accepts Plan 1’s server **and** wants one web codebase; still ship Capacitor camera/IAP/location plugins and the same nine rules.
+**Old Plan 3** — WKWebView / Capacitor wrap. Extra App Review risk. Camera/push/IAP weaker than native. Not Phase 2.
 
 ---
 
-## Comparison (admin)
+## Comparison (current lock)
 
-| | Plan 1 Server + native | Plan 2 iCloud native | Plan 3 wrap (on Plan 1) |
-|--|------------------------|----------------------|-------------------------|
-| Your server | Yes | No | Yes |
-| 50-mile geo | Strong | Bounding box + device filter | Foreground OK |
-| 30-min expiry | Worker job | Record field + client filter | Worker if Plan 1 |
-| Paid enforcement | Server | StoreKit + honest client | Server + IAP plugin |
-| Camera last photo | AVFoundation | AVFoundation | getUserMedia / plugin |
-| Chat after concur | WS | CloudKit messages | WebSocket |
-| Cost | Hosting | Apple developer only | Hosting + wrap |
+| | Phase 1 Web MVP | Phase 2 Native iOS |
+|--|-----------------|-------------------|
+| When | Now | After 1B sign-off |
+| UI | GitHub Pages | Swift App Store binary |
+| Data | Cloudflare KV | **Same** KV via Worker |
+| Camera | getUserMedia | AVFoundation |
+| Paid | Demo → Stripe | StoreKit → Worker |
+| 50-mile / expiry | Worker | Worker |
+| Cost | Free tiers | Apple Developer Program |
 
 ---
 
 ## Explicit wait
 
-**Sequence locked (2026-09-15):** web app first (`meetup-web/`). Plan 2 (native iCloud) starts only after admin approves the web app and picks a public name (`meetup-web/ADMIN-DECISION.md`).  
-Do not start Plan 2, wrap, or a second backend until that approval.
-
-No meetup iOS/Android app tree and no backend service were added for this goal.
+- **Now:** finish Worker deploy, wire `config.js`, test nine functions on github.io.  
+- **Not now:** iOS Xcode project, CloudKit, wrap, Stripe.  
+- **Name:** still admin pick; do not ship “Meet50” as the store name.
