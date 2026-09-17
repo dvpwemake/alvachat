@@ -1,5 +1,7 @@
 # Real backend (free) + GitHub Pages domain
 
+**Cost:** Cloudflare **Free** plan only. Do not upgrade Workers. No Stripe.
+
 GitHub Pages **cannot** run Python or any server. The site at
 https://dvpwemake.github.io/alvachat/ is static HTML/JS only.
 

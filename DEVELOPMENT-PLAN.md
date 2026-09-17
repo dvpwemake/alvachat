@@ -3,7 +3,9 @@
 Working title: **Meet50**. Public name: admin pick (`ADMIN-DECISION.md`).  
 GGH copy: `grokdrive:GrokHub/Meet50/`. Public UI: https://dvpwemake.github.io/alvachat/
 
-**Locked:** one Cloudflare API. Two clients in order.
+**Locked:** one Cloudflare API. Two clients in order. **Free stack only.**
+
+The only paid item is **Apple Developer Program** (already paid). No Stripe, no paid Cloudflare, no paid maps, no paid push, no paid auth APIs.
 
 1. **Phase 1 — web MVP** (GitHub Pages UI + Cloudflare Worker/KV DB) for testing.  
 2. **Phase 2 — native iOS** App Store app on that **same** API. Not CloudKit. Not a website wrap.
@@ -31,7 +33,7 @@ Request → respond → initiator concurs → channel. Chat locked until the cha
 | 1 | Signup profile | Form → Me | Same API |
 | 2 | Free: looking-for only. Paid: age, distance, education, time | Feed | Same rules |
 | 3 | Live camera post/respond; last profile photo; no gallery | getUserMedia | AVFoundation |
-| 4 | Free / paid | Demo → Stripe | StoreKit → Worker `plan` |
+| 4 | Free / paid | Demo unlock (test only) | StoreKit → Worker `plan` |
 | 5 | Channel; free respond 30 min; paid no expiry | Worker | Same |
 | 6 | Text chat after channel | Poll | REST + APNs |
 | 7 | Active users within 50 miles | Map + list | MapKit + same query |
@@ -89,17 +91,17 @@ Sign off each row on the **live** site (KV), not only localhost.
 
 **Gate:** admin signs 1.5.1–1.5.10. Then Phase 2.
 
-### Step 1.6 — After test (web, not required for iOS start)
+### Step 1.6 — Stay on free tiers (after test)
 
-| Item | After sign-off |
-|------|----------------|
-| Paid | Replace demo button with Stripe |
-| Chat | Web Push (tabs sleep) |
-| Photos | R2 if KV size hurts |
-| Auth | Email or Sign in with Apple |
-| KV | Split keys or D1 if writes hit 1,000/day |
+| Item | Rule |
+|------|------|
+| Paid on web | **Demo only.** Real paid is iOS StoreKit. No Stripe. |
+| Chat | Keep polling. Optional **free** Web Push later (no paid push vendor). |
+| Photos | Stay in KV. Cloudflare **R2 free tier** only if KV size hurts. |
+| Auth | Bearer token. Sign in with Apple on iOS (included in Developer Program). No paid Auth0/Firebase. |
+| KV | Stay on Workers Free. Split keys or **D1 free** only if writes hit 1,000/day. |
 
-Free cap (00:00 UTC): 100k Worker req/day, 100k KV reads/day, **1,000 KV writes/day**, 1 write/sec on the same key.
+Free cap (00:00 UTC): 100k Worker req/day, 100k KV reads/day, **1,000 KV writes/day**, 1 write/sec on the same key. Stay inside these; do not upgrade Cloudflare to Paid.
 
 ---
 
@@ -149,13 +151,31 @@ Free cap (00:00 UTC): 100k Worker req/day, 100k KV reads/day, **1,000 KV writes/
 
 ---
 
+## Free stack (locked)
+
+| Layer | Tool | Cost |
+|-------|------|------|
+| UI | GitHub Pages + this repo | Free |
+| API | Cloudflare **Workers Free** | Free |
+| DB | Workers **KV Free** | Free |
+| Map tiles | OpenStreetMap + Leaflet | Free |
+| Workplace VCS | Google Drive + rclone (GGH) | Free |
+| Local run | Python stdlib `app.py` | Free |
+| iOS paid | StoreKit (Apple Developer, already paid) | No extra platform |
+| iOS push | APNs (Apple Developer) | No extra platform |
+
+**Do not add:** Stripe, paid Cloudflare, Mapbox/Google Maps paid keys, Firebase paid, Auth0, OneSignal paid, Vercel/Render/Fly paid, CloudKit as a second backend.
+
+Web “Unlock paid” is a **test switch** only. Production paid = App Store IAP.
+
 ## What not to do
 
 - iOS before 1.5 sign-off.  
 - CloudKit or a second DB.  
 - Capacitor/WKWebView wrap unless admin asks later.  
 - Treating GitHub Pages as a server.  
-- Shipping the web demo “Unlock paid” button.
+- Any paid API or host besides Apple Developer.  
+- Shipping the web demo paid button as real billing.
 
 ---
 

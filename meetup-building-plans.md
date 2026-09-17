@@ -44,7 +44,7 @@ User **must take a real-time photo from the camera** to **post** a meetup reques
 
 ### 4. Two user levels: free and paid
 Entitlement gates Feed selectors, respond expiry, and offer/ask expiry. Free is default.  
-Web test: demo unlock. Web production: Stripe. iOS: StoreKit → Worker sets `plan`. Server (Worker) is authoritative.
+**Money:** free stack only. The only paid item is **Apple Developer** (already paid). Web test: demo unlock (not real billing). iOS production: StoreKit → Worker sets `plan`. No Stripe, no paid Cloudflare, no paid maps/auth/push vendors. Worker is authoritative.
 
 ### 5. Mutual selection / meetup channel
 - Initiator **issues a meetup request**.  
@@ -177,7 +177,7 @@ Kept so the original three-plan memo is not lost. **Do not build these unless ad
 | UI | GitHub Pages | Swift App Store binary |
 | Data | Cloudflare KV | **Same** KV via Worker |
 | Camera | getUserMedia | AVFoundation |
-| Paid | Demo → Stripe | StoreKit → Worker |
+| Paid | Demo unlock (test) | StoreKit → Worker |
 | 50-mile / expiry | Worker | Worker |
 | Cost | Free tiers | Apple Developer Program |
 
@@ -186,5 +186,5 @@ Kept so the original three-plan memo is not lost. **Do not build these unless ad
 ## Explicit wait
 
 - **Now:** finish Worker deploy, wire `config.js`, test nine functions on github.io.  
-- **Not now:** iOS Xcode project, CloudKit, wrap, Stripe.  
+- **Not now:** iOS Xcode project, CloudKit, wrap, any paid API.  
 - **Name:** still admin pick; do not ship “Meet50” as the store name.
